@@ -52,10 +52,13 @@ function fetchReactions(msg: Message, emoji: ReactionEmoji, type: number) {
     })
         .then(res => {
             for (const user of res.body) {
-                FluxDispatcher.dispatch({
-                    type: "USER_UPDATE",
-                    user
-                });
+                // only dispatch for users missing from the UserStore, every dispatch is a full flux cycle through all stores
+                if (UserStore.getUser(user.id) == null) {
+                    FluxDispatcher.dispatch({
+                        type: "USER_UPDATE",
+                        user
+                    });
+                }
             }
 
             FluxDispatcher.dispatch({
