@@ -444,6 +444,15 @@ export default definePlugin({
         },
 
         {
+            // fix the +:emoji: quick reaction command reacting to a deleted message
+            find: "/^\\+:(.+?): *$/",
+            replacement: {
+                match: /(?<=getMessages\(\i\.id\)\.)last\(\)/,
+                replace: "findNewest(m=>!m.deleted)"
+            }
+        },
+
+        {
             // Message domain model
             find: "}addReaction(",
             replacement: [
