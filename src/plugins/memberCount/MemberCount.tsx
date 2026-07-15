@@ -48,22 +48,33 @@ export function MemberCount({ isTooltip, tooltipGuildId }: { isTooltip?: true; t
         () => OnlineMemberCountStore.getCount(guildId)
     );
 
-    const { groups } = useStateFromStores(
+    // these selectors have to return primitives, fresh objects would fail the equality check and rerender on every store emit (#4394)
+    const channelOnlineCount = useStateFromStores(
         [ChannelMemberStore],
-        () => ChannelMemberStore.getProps(guildId, currentChannel?.id)
+        () => {
+            const { groups } = ChannelMemberStore.getProps(guildId, currentChannel?.id);
+            if (groups.length === 0 || groups[0].id === "unknown") return null;
+
+            return groups.reduce((total, curr) => total + (curr.id === "offline" ? 0 : curr.count), 0);
+        }
     );
 
-    const threadGroups = useStateFromStores(
+    const threadOnlineCount = useStateFromStores(
         [ThreadMemberListStore],
-        () => ThreadMemberListStore.getMemberListSections(currentChannel?.id)
+        () => {
+            const threadGroups = ThreadMemberListStore.getMemberListSections(currentChannel?.id);
+            if (!threadGroups || isObjectEmpty(threadGroups)) return null;
+
+            return Object.values(threadGroups).reduce((total, curr) => total + (curr.sectionId === "offline" ? 0 : curr.userIds.length), 0);
+        }
     );
 
-    if (!isTooltip && (groups.length >= 1 || groups[0].id !== "unknown")) {
-        onlineCount = groups.reduce((total, curr) => total + (curr.id === "offline" ? 0 : curr.count), 0);
+    if (!isTooltip && channelOnlineCount != null) {
+        onlineCount = channelOnlineCount;
     }
 
-    if (!isTooltip && threadGroups && !isObjectEmpty(threadGroups)) {
-        onlineCount = Object.values(threadGroups).reduce((total, curr) => total + (curr.sectionId === "offline" ? 0 : curr.userIds.length), 0);
+    if (!isTooltip && threadOnlineCount != null) {
+        onlineCount = threadOnlineCount;
     }
 
     useEffect(() => {
