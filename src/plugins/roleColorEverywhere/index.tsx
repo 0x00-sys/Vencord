@@ -22,7 +22,7 @@ import { Devs } from "@utils/constants";
 import { Logger } from "@utils/Logger";
 import definePlugin, { makeRange, OptionType } from "@utils/types";
 import { findByCodeLazy } from "@webpack";
-import { ChannelStore, GuildMemberStore, GuildRoleStore, GuildStore } from "@webpack/common";
+import { ChannelStore, FluxDispatcher, GuildMemberStore, GuildRoleStore, GuildStore, useEffect, useStateFromStores } from "@webpack/common";
 
 const useMessageAuthor = findByCodeLazy('"Result cannot be null because the message is not null"');
 
@@ -139,7 +139,7 @@ export default definePlugin({
             find: "MessageReactions.render:",
             replacement: {
                 match: /tag:"strong",variant:"text-md\/medium"(?<=onContextMenu:.{0,15}\((\i),(\i),\i\).+?)/,
-                replace: "$&,style:$self.getColorStyle($2?.id,$1?.channel?.id)"
+                replace: "$&,style:$self.useReactorColorStyle($2?.id,$1?.channel?.id)"
             },
             predicate: () => settings.store.reactorsList,
         },
@@ -183,6 +183,25 @@ export default definePlugin({
 
     getColorStyle(userId: string, channelOrGuildId: string) {
         const colorString = this.getColorString(userId, channelOrGuildId);
+
+        return colorString && {
+            color: colorString
+        };
+    },
+
+    useReactorColorStyle(userId: string, channelId: string) {
+        const colorString = useStateFromStores([GuildMemberStore], () => this.getColorString(userId, channelId));
+
+        useEffect(() => {
+            const guildId = ChannelStore.getChannel(channelId)?.guild_id;
+            if (userId == null || guildId == null || GuildMemberStore.isMember(guildId, userId)) return;
+
+            FluxDispatcher.dispatch({
+                type: "GUILD_MEMBERS_REQUEST",
+                guildIds: [guildId],
+                userIds: [userId]
+            });
+        }, [userId, channelId]);
 
         return colorString && {
             color: colorString
