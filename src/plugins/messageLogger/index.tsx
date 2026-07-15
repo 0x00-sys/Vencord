@@ -30,7 +30,7 @@ import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import { Message, MessageAttachment } from "@vencord/discord-types";
 import { findCssClassesLazy } from "@webpack";
-import { AuthenticationStore, ChannelStore, FluxDispatcher, Menu, MessageStore, Parser, SelectedChannelStore, Timestamp, UserStore, useStateFromStores } from "@webpack/common";
+import { AuthenticationStore, ChannelStore, FluxDispatcher, Menu, MessageStore, Parser, SelectedChannelStore, Timestamp, useMemo, UserStore, useStateFromStores } from "@webpack/common";
 
 import overlayStyle from "./deleteStyleOverlay.css?managed";
 import textStyle from "./deleteStyleText.css?managed";
@@ -239,17 +239,25 @@ export default definePlugin({
             (oldMsg, newMsg) => oldMsg?.editHistory === newMsg?.editHistory
         );
 
+        // edit contents are immutable once logged, no need to reparse them on every rerender of the message
+        const parsedEdits = useMemo(
+            () => message.editHistory?.map(edit => parseEditContent(edit.content, message)),
+            [message]
+        );
+
+        const editedLabel = getIntlMessage("MESSAGE_EDITED");
+
         return settings.store.inlineEdits && (
             <>
                 {message.editHistory?.map((edit, idx) => (
                     <div key={idx} className="messagelogger-edited">
-                        {parseEditContent(edit.content, message)}
+                        {parsedEdits?.[idx]}
                         <Timestamp
                             timestamp={edit.timestamp}
                             isEdited={true}
                             isInline={false}
                         >
-                            <span className={MessageClasses.edited}>{" "}({getIntlMessage("MESSAGE_EDITED")})</span>
+                            <span className={MessageClasses.edited}>{" "}({editedLabel})</span>
                         </Timestamp>
                     </div>
                 ))}
