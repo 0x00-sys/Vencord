@@ -505,18 +505,18 @@ function patchFactory(moduleId: PropertyKey, originalFactory: AnyModuleFactory):
     const originalFactoryCode = String(originalFactory);
     const isArrowFunction = originalFactoryCode.startsWith("(");
 
-    // 0, prefix to turn it into an expression: 0,function(){} would be invalid syntax without the 0,
-    let code = "0," + (!isArrowFunction ? "function" : "") + originalFactoryCode.slice(originalFactoryCode.indexOf("("));
-    let patchedSource = code;
+    // built lazily on the first matching patch, since most factories match no patch
+    let code = "";
+    let patchedSource = "";
     let patchedFactory = originalFactory;
 
     const patchedBy = new Set<string>();
 
+    const buildNumber = getBuildNumber();
+    const shouldCheckBuildNumber = buildNumber !== -1;
+
     for (let i = 0; i < patches.length; i++) {
         const patch = patches[i];
-
-        const buildNumber = getBuildNumber();
-        const shouldCheckBuildNumber = buildNumber !== -1;
 
         if (
             shouldCheckBuildNumber &&
@@ -527,13 +527,18 @@ function patchFactory(moduleId: PropertyKey, originalFactory: AnyModuleFactory):
             continue;
         }
 
+        // once a patch has applied, later finds must match against the patched code
+        const sourceToMatch = code || originalFactoryCode;
         const moduleMatches = typeof patch.find === "string"
-            ? code.includes(patch.find)
-            : (patch.find.global && (patch.find.lastIndex = 0), patch.find.test(code));
+            ? sourceToMatch.includes(patch.find)
+            : (patch.find.global && (patch.find.lastIndex = 0), patch.find.test(sourceToMatch));
 
         if (!moduleMatches) {
             continue;
         }
+
+        // 0, prefix to turn it into an expression: 0,function(){} would be invalid syntax without the 0,
+        code ||= "0," + (!isArrowFunction ? "function" : "") + originalFactoryCode.slice(originalFactoryCode.indexOf("("));
 
         const executePatch = traceFunctionWithResults(`patch by ${patch.plugin}`, (match: string | RegExp, replace: string) => {
             if (typeof match !== "string" && match.global) {
