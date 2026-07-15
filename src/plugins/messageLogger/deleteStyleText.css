@@ -6,3 +6,7 @@
     --text-link: var(--red-460, #be3535);
     --text-strong: var(--red-460, #be3535);
 }
+
+.messagelogger-deleted [class*="clanTagChiplet"] {
+    --text-default: var(--header-primary);
+}
