@@ -125,12 +125,15 @@ const clickTimers = new Map<string, any>();
 export const VoiceChannelIndicator = ErrorBoundary.wrap(({ userId, isProfile, isActionButton, shouldHighlight }: VoiceChannelIndicatorProps) => {
     const channelId = useStateFromStores([VoiceStateStore], () => VoiceStateStore.getVoiceStateForUser(userId)?.channelId);
 
-    const { isMuted, isDeaf } = useStateFromStores([VoiceStateStore], () => {
+    // these selectors have to return primitives, fresh objects would fail the equality check and rerender on every store emit (#4394)
+    const isMuted = useStateFromStores([VoiceStateStore], () => {
         const voiceState = VoiceStateStore.getVoiceStateForUser(userId);
-        return {
-            isMuted: voiceState?.mute || voiceState?.selfMute || false,
-            isDeaf: voiceState?.deaf || voiceState?.selfDeaf || false
-        };
+        return voiceState?.mute || voiceState?.selfMute || false;
+    });
+
+    const isDeaf = useStateFromStores([VoiceStateStore], () => {
+        const voiceState = VoiceStateStore.getVoiceStateForUser(userId);
+        return voiceState?.deaf || voiceState?.selfDeaf || false;
     });
 
     const channel = channelId == null ? undefined : ChannelStore.getChannel(channelId);
