@@ -37,11 +37,18 @@ export default definePlugin({
         {
             find: ".handleSendMessage,onResize:",
             replacement: {
-                // https://regex101.com/r/7iswuk/1
-                match: /let (\i)=\i\.\i\.parse\((\i),.+?\.getSendMessageOptions\(\{.+?\}\)?;(?=.+?(\i)\.flags=)(?<=\)\(({.+?})\)\.then.+?)/,
-                replace: (m, parsedMessage, channel, options, props) => m +
+                // the leading optional group grabs Discord's text command handler (+:emoji:, s/find/replace, ...) so it can be re-run when a listener changes the content (#4313)
+                match: /(?:let \i=\(0,(\i\.\i)\)\(\i,\{channel:\i,isEdit:!1\}\).+?)?let (\i)=\i\.\i\.parse\((\i),.+?\.getSendMessageOptions\(\{.+?\}\)?;(?=.+?(\i)\.flags=)(?<=\)\(({.+?})\)\.then.+?)/,
+                replace: (m, applyTextCommands, parsedMessage, channel, options, props) => m +
+                    `const vcOriginalContent=${parsedMessage}.content;` +
                     `if(await Vencord.Api.MessageEvents._handlePreSend(${channel}.id,${parsedMessage},${options},${props}))` +
-                    "return{shouldClear:false,shouldRefocus:true};"
+                    "return{shouldClear:false,shouldRefocus:true};" +
+                    (applyTextCommands
+                        ? `if(${parsedMessage}.content!==vcOriginalContent){` +
+                        `let vcCommandResult=(0,${applyTextCommands})(${parsedMessage}.content,{channel:${channel},isEdit:!1});` +
+                        `null!=vcCommandResult&&(null!=vcCommandResult.content&&(${parsedMessage}.content=vcCommandResult.content),null!=vcCommandResult.tts&&(${parsedMessage}.tts=vcCommandResult.tts));` +
+                        "}"
+                        : "")
             }
         },
         {
