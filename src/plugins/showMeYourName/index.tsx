@@ -6,12 +6,13 @@
 
 import "./styles.css";
 
+import { isPluginEnabled } from "@api/PluginManager";
 import { definePluginSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Devs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
 import { Channel, Message, User } from "@vencord/discord-types";
-import { RelationshipStore, StreamerModeStore } from "@webpack/common";
+import { AuthenticationStore, GuildMemberStore, React, RelationshipStore, StreamerModeStore, TypingStore, UserStore } from "@webpack/common";
 
 interface UsernameProps {
     author: { nick: string; authorId: string; };
@@ -67,6 +68,15 @@ export default definePlugin({
                 replace: "$self.renderUsername(arguments[0]),_oldChildren:$&"
             }
         },
+        {
+            find: "#{intl::SEVERAL_USERS_TYPING_STRONG}",
+            replacement: {
+                match: /(?<="aria-hidden":!0,children:)\i/,
+                replace: "$self.renderTypingNames(arguments[0]?.channel,$&)"
+            },
+            // TypingTweaks patches the same spot and replaces the names with its own components
+            predicate: () => !isPluginEnabled("TypingTweaks")
+        },
     ],
     settings,
 
@@ -112,4 +122,61 @@ export default definePlugin({
             return <>{author?.nick}</>;
         }
     }, { noop: true }),
+
+    renderTypingNames(channel: Channel | undefined, children: any) {
+        try {
+            if (!channel || !Array.isArray(children)) return children;
+
+            const { mode, friendNicknames, displayNames } = settings.store;
+
+            const myId = AuthenticationStore.getId();
+            // Discord drops uncached users before formatting the names, so filter them out too to keep the indices aligned
+            const users = Object.keys(TypingStore.getTypingUsers(channel.id))
+                .filter(id => id && id !== myId && !RelationshipStore.isBlockedOrIgnored(id))
+                .map(id => UserStore.getUser(id))
+                .filter(user => user != null);
+
+            let index = 0;
+            return children.map(c => {
+                if (c?.type !== "strong") return c;
+
+                const user = users[index++];
+                if (!user) return c;
+
+                let username = StreamerModeStore.enabled
+                    ? user.username[0] + "…"
+                    : user.username;
+
+                if (displayNames)
+                    username = user.globalName || username;
+
+                let nick = GuildMemberStore.getNick(channel.guild_id, user.id) ?? "";
+
+                const friendNickname = RelationshipStore.getNickname(user.id);
+
+                if (friendNickname) {
+                    const shouldUseFriendNickname =
+                        friendNicknames === "always" ||
+                        (friendNicknames === "dms" && channel.isPrivate()) ||
+                        (friendNicknames === "fallback" && !nick);
+
+                    if (shouldUseFriendNickname)
+                        nick = friendNickname;
+                }
+
+                if (!nick)
+                    nick = user.globalName || user.username;
+
+                if (username.toLowerCase() === nick.toLowerCase() || mode === "user")
+                    return React.cloneElement(c, undefined, username);
+
+                if (mode === "nick-user")
+                    return React.cloneElement(c, undefined, <>{nick} <span className="vc-smyn-suffix">{username}</span></>);
+
+                return React.cloneElement(c, undefined, <>{username} <span className="vc-smyn-suffix">{nick}</span></>);
+            });
+        } catch {
+            return children;
+        }
+    },
 });
