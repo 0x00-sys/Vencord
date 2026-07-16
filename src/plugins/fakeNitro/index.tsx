@@ -622,7 +622,10 @@ export default definePlugin({
 
         itemsToMaybePush.push(...message.attachments.filter(attachment => attachment.content_type === "image/gif").map(attachment => attachment.url));
 
-        for (const item of itemsToMaybePush) {
+        for (let item of itemsToMaybePush) {
+            // the link can be wrapped in <> to suppress the embed
+            if (item.startsWith("<") && item.endsWith(">")) item = item.slice(1, -1);
+
             if (!settings.store.transformCompoundSentence && !item.startsWith("http") && !hyperLinkRegex.test(item)) continue;
 
             const imgMatch = item.match(fakeNitroStickerRegex);
