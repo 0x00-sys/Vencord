@@ -867,6 +867,13 @@ export default definePlugin({
                         ));
                     } else {
                         this.sendAnimatedSticker(link, sticker.id, channelId);
+                        // clear the sticker preview StickerPaste keeps in the chatbox, otherwise
+                        // the next send just cancels into another attachment (#3691)
+                        FluxDispatcher.dispatch({
+                            type: "CLEAR_STICKER_PREVIEW",
+                            channelId,
+                            draftType: DraftType.ChannelMessage
+                        });
                     }
 
                     return { cancel: true };
