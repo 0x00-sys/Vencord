@@ -46,7 +46,10 @@ export const VoiceRecorderWeb: VoiceRecorder = ({ setAudioBlob, onRecordingChang
                 const chunks = [] as Blob[];
                 setChunks(chunks);
 
-                const recorder = new MediaRecorder(stream);
+                // Firefox can record OggOpus directly, which is what voice messages are meant to be.
+                // Chromium only ever gives us webm (#1512)
+                const oggOpus = "audio/ogg;codecs=opus";
+                const recorder = new MediaRecorder(stream, MediaRecorder.isTypeSupported(oggOpus) ? { mimeType: oggOpus } : undefined);
                 setRecorder(recorder);
                 recorder.addEventListener("dataavailable", e => {
                     chunks.push(e.data);
@@ -58,7 +61,8 @@ export const VoiceRecorderWeb: VoiceRecorder = ({ setAudioBlob, onRecordingChang
         } else {
             if (recorder) {
                 recorder.addEventListener("stop", () => {
-                    setAudioBlob(new Blob(chunks, { type: "audio/ogg; codecs=opus" }));
+                    // use the real mime type, pretending webm is ogg only hid the unsupported format warning
+                    setAudioBlob(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
 
                     changeRecording(false);
                 });
