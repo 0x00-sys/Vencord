@@ -156,8 +156,9 @@ export const SettingsStore = new SettingsStoreClass(settings, {
                 if (!setting) return v;
 
                 if ("default" in setting)
-                    // normal setting with a default value
-                    return (target[key] = setting.default);
+                    // normal setting with a default value. Clone arrays so mutating the
+                    // stored value can't corrupt the shared default in the setting def
+                    return (target[key] = Array.isArray(setting.default) ? [...setting.default] : setting.default);
 
                 if (setting.type === OptionType.SELECT) {
                     const def = setting.options.find(o => o.default);
