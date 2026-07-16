@@ -22,7 +22,11 @@ import { runtimeHashMessageKey } from "@utils/intlHash";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { Message } from "@vencord/discord-types";
-import { i18n, RelationshipStore } from "@webpack/common";
+import { MessageType } from "@vencord/discord-types/enums";
+import { findStoreLazy } from "@webpack";
+import { i18n, MessageStore, RelationshipStore } from "@webpack/common";
+
+const ReferencedMessageStore = findStoreLazy("ReferencedMessageStore");
 
 interface MessageDeleteProps {
     // Internal intl message for BLOCKED_MESSAGE_COUNT
@@ -43,6 +47,12 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         restartNeeded: false
+    },
+    hideRepliesToBlockedUsers: {
+        description: "Also hide other people's messages that reply to a blocked message",
+        type: OptionType.BOOLEAN,
+        default: false,
+        restartNeeded: true
     }
 });
 
@@ -82,6 +92,14 @@ export default definePlugin({
                     replace: (_, props) => `if($self.shouldIgnoreMessage(${props}.message))return;`
                 }
             ]
+        },
+        {
+            find: "Message must not be a thread starter message",
+            predicate: () => settings.store.hideRepliesToBlockedUsers,
+            replacement: {
+                match: /return (null!=\i\?\(0,\i\.jsx\)\(\i,\{flashKey:\i,[\s\S]*?`bg-flash-\$\{\i\}`\):\i)/,
+                replace: "return $self.shouldHideReply(arguments[0])?null:$1"
+            }
         }
     ],
 
@@ -95,6 +113,19 @@ export default definePlugin({
             new Logger("NoBlockedMessages").error("Failed to check if user is blocked or ignored:", e);
             return false;
         }
+    },
+
+    shouldHideReply({ message }: { message?: Message; }): boolean {
+        if (message?.type !== MessageType.REPLY) return false;
+
+        const reference = message.messageReference;
+        if (!reference?.message_id) return false;
+
+        const referenced = MessageStore.getMessage(reference.channel_id, reference.message_id)
+            ?? ReferencedMessageStore.getMessageByReference(reference)?.message;
+        if (!referenced) return false;
+
+        return this.shouldIgnoreMessage(referenced);
     },
 
     shouldHide(props: MessageDeleteProps): boolean {
