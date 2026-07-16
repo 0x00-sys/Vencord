@@ -146,7 +146,7 @@
                 // Skip button should appear after that,
                 // now simply click it automatically
                 setTimeout(() => {
-                    const skipBtn = document.querySelector("button.ytp-ad-skip-button");
+                    const skipBtn = document.querySelector("button.ytp-ad-skip-button, button.ytp-ad-skip-button-modern, button.ytp-skip-ad-button");
                     if (skipBtn) {
                         skipBtn.click();
                     }
@@ -208,6 +208,7 @@
     // Removes ads metadata from YouTube XHR requests
     jsonOverride("adPlacements", []);
     jsonOverride("playerAds", []);
+    jsonOverride("adSlots", []);
     // Applies CSS that hides YouTube ad elements
     hideElements();
     // Some changes should be re-evaluated on every page change
