@@ -16,13 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { getUniqueUsername, openUserProfile } from "@utils/discord";
+import { getUniqueUsername } from "@utils/discord";
 import { ChannelType, RelationshipType } from "@vencord/discord-types/enums";
 import { UserUtils } from "@webpack/common";
 
 import settings from "./settings";
 import { ChannelDelete, GuildDelete, RelationshipRemove } from "./types";
-import { deleteGroup, deleteGuild, getGroup, getGuild, GuildAvailabilityStore, notify } from "./utils";
+import { deleteGroup, deleteGuild, getFriendInfo, getGroup, getGuild, GuildAvailabilityStore, makeOnClick, notify } from "./utils";
 
 let manuallyRemovedFriend: string | undefined;
 let manuallyRemovedGuild: string | undefined;
@@ -38,26 +38,25 @@ export async function onRelationshipRemove({ relationship: { type, id } }: Relat
         return;
     }
 
+    // grab this before the await, syncFriends evicts the entry right after this handler
+    const info = getFriendInfo(id);
+
     const user = await UserUtils.getUser(id)
         .catch(() => null);
-    if (!user) return;
+    if (!user && !info) return;
+
+    const name = user ? getUniqueUsername(user) : info!.username;
+    const icon = user?.getAvatarURL(undefined, undefined, false);
+    const onClick = makeOnClick(id, user != null, info);
 
     switch (type) {
         case RelationshipType.FRIEND:
             if (settings.store.friends)
-                notify(
-                    `${getUniqueUsername(user)} removed you as a friend.`,
-                    user.getAvatarURL(undefined, undefined, false),
-                    () => openUserProfile(user.id)
-                );
+                notify(`${name} removed you as a friend.`, icon, onClick);
             break;
         case RelationshipType.INCOMING_REQUEST:
             if (settings.store.friendRequestCancels)
-                notify(
-                    `A friend request from ${getUniqueUsername(user)} has been removed.`,
-                    user.getAvatarURL(undefined, undefined, false),
-                    () => openUserProfile(user.id)
-                );
+                notify(`A friend request from ${name} has been removed.`, icon, onClick);
             break;
     }
 }

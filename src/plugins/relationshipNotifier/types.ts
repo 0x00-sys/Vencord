@@ -40,6 +40,11 @@ export interface RelationshipRemove {
     };
 }
 
+export interface CachedFriendInfo {
+    username: string;
+    dmChannelId?: string;
+}
+
 export interface SimpleGroupChannel {
     id: string;
     name: string;
