@@ -71,6 +71,22 @@ const settings = definePluginSettings({
     }
 });
 
+// same gradient treatment Discord's own gradient role names use
+function colorStyleFromKey(colorKey: string | null | undefined) {
+    if (!colorKey) return null;
+
+    const colors = colorKey.split(",");
+    if (colors.length === 1) return { color: colorKey };
+
+    return {
+        background: `linear-gradient(to right, ${[...colors, colors[0]].join(", ")})`,
+        backgroundSize: "100px auto",
+        WebkitBackgroundClip: "text",
+        backgroundClip: "text",
+        WebkitTextFillColor: "transparent"
+    };
+}
+
 export default definePlugin({
     name: "RoleColorEverywhere",
     authors: [Devs.KingFish, Devs.lewisakura, Devs.AutumnVN, Devs.Kyuuhachi, Devs.jamesbt365],
@@ -85,7 +101,7 @@ export default definePlugin({
             replacement: [
                 {
                     match: /(?<=user:(\i),guildId:([^,]+?),.{0,100}?children:\i=>\i)\((\i)\)/,
-                    replace: "({...$3,color:$self.getColorInt($1?.id,$2)})",
+                    replace: "({...$3,color:$self.getColorInt($1?.id,$2),roleColors:$self.getColorStrings($1?.id,$2)})",
                 }
             ],
             predicate: () => settings.store.chatMentions
@@ -97,7 +113,7 @@ export default definePlugin({
             replacement: [
                 {
                     match: /let\{id:(\i),guildId:\i,channelId:(\i)[^}]*\}.*?\.\i,{(?=children)/,
-                    replace: "$&color:$self.getColorInt($1,$2),"
+                    replace: "$&color:$self.getColorInt($1,$2),roleColors:$self.getColorStrings($1,$2),"
                 }
             ],
             predicate: () => settings.store.chatMentions
@@ -176,21 +192,41 @@ export default definePlugin({
         return null;
     },
 
+    getColorStrings(userId: string, channelOrGuildId: string) {
+        try {
+            const guildId = ChannelStore.getChannel(channelOrGuildId)?.guild_id ?? GuildStore.getGuild(channelOrGuildId)?.id;
+            if (guildId == null) return null;
+
+            return GuildMemberStore.getMember(guildId, userId)?.colorStrings ?? null;
+        } catch (e) {
+            new Logger("RoleColorEverywhere").error("Failed to get color strings", e);
+        }
+
+        return null;
+    },
+
+    // "#hex" for flat roles, "#hex,#hex[,#hex]" for gradient roles. A string so it can
+    // double as a useStateFromStores selector result, which has to stay primitive
+    getColorKey(userId: string, channelOrGuildId: string) {
+        const colorStrings = this.getColorStrings(userId, channelOrGuildId);
+        if (colorStrings?.secondaryColor) {
+            return [colorStrings.primaryColor, colorStrings.secondaryColor, colorStrings.tertiaryColor].filter(Boolean).join(",");
+        }
+
+        return this.getColorString(userId, channelOrGuildId);
+    },
+
     getColorInt(userId: string, channelOrGuildId: string) {
         const colorString = this.getColorString(userId, channelOrGuildId);
         return colorString && parseInt(colorString.slice(1), 16);
     },
 
     getColorStyle(userId: string, channelOrGuildId: string) {
-        const colorString = this.getColorString(userId, channelOrGuildId);
-
-        return colorString && {
-            color: colorString
-        };
+        return colorStyleFromKey(this.getColorKey(userId, channelOrGuildId));
     },
 
     useReactorColorStyle(userId: string, channelId: string) {
-        const colorString = useStateFromStores([GuildMemberStore], () => this.getColorString(userId, channelId));
+        const colorKey = useStateFromStores([GuildMemberStore], () => this.getColorKey(userId, channelId));
 
         useEffect(() => {
             const guildId = ChannelStore.getChannel(channelId)?.guild_id;
@@ -203,9 +239,7 @@ export default definePlugin({
             });
         }, [userId, channelId]);
 
-        return colorString && {
-            color: colorString
-        };
+        return colorStyleFromKey(colorKey);
     },
 
     useMessageColorsStyle(message: any) {
@@ -234,10 +268,13 @@ export default definePlugin({
 
     RoleGroupColor: ErrorBoundary.wrap(({ id, count, title, guildId, label }: { id: string; count: number; title: string; guildId: string; label: string; }) => {
         const role = GuildRoleStore.getRole(guildId, id);
+        const colorStyle = role?.colorStrings?.secondaryColor
+            ? colorStyleFromKey([role.colorStrings.primaryColor, role.colorStrings.secondaryColor, role.colorStrings.tertiaryColor].filter(Boolean).join(","))
+            : { color: role?.colorString };
 
         return (
             <span style={{
-                color: role?.colorString,
+                ...colorStyle,
                 fontWeight: "unset",
                 letterSpacing: ".05em"
             }}>
