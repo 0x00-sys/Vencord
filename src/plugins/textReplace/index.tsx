@@ -30,7 +30,7 @@ import { Devs } from "@utils/constants";
 import { classNameFactory } from "@utils/css";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
-import { React, TextInput, useState } from "@webpack/common";
+import { React, TextInput, UserStore, useState } from "@webpack/common";
 
 const cl = classNameFactory("vc-textReplace-");
 
@@ -52,6 +52,11 @@ const makeEmptyRule: () => Rule = () => ({
 const makeEmptyRuleArray = () => [makeEmptyRule()];
 
 const settings = definePluginSettings({
+    applyToReceivedMessages: {
+        type: OptionType.BOOLEAN,
+        description: "Also apply rules to received messages. This only changes how they display for you",
+        default: false
+    },
     replace: {
         type: OptionType.COMPONENT,
         component: () => {
@@ -273,6 +278,32 @@ export default definePlugin({
     authors: [Devs.AutumnVN, Devs.TheKodeToad],
 
     settings,
+
+    patches: [
+        {
+            // Replace the content right before it enters the markdown parser, so the
+            // store data stays untouched and copying or replying sees the original
+            find: "!1,hideSimpleEmbedContent",
+            replacement: {
+                match: /(?<=,\i=)\((\i\?\?\i)\)\.content(?=,)/,
+                replace: "$self.transformReceivedContent($1)"
+            }
+        }
+    ],
+
+    transformReceivedContent(message: { content?: string; channel_id?: string; author?: { id: string; }; }): string {
+        const content = message?.content ?? "";
+        try {
+            if (!content || !settings.store.applyToReceivedMessages) return content;
+            if (message.channel_id === TEXT_REPLACE_RULES_CHANNEL_ID) return content;
+            // own messages were already replaced on send
+            if (message.author?.id === UserStore.getCurrentUser()?.id) return content;
+
+            return applyRules(content);
+        } catch {
+            return content;
+        }
+    },
 
     start() {
         settings.store.regexRules.forEach(rule => rule.id ??= crypto.randomUUID());
