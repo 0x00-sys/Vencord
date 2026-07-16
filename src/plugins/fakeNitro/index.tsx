@@ -506,6 +506,30 @@ export default definePlugin({
         return array.filter(item => item != null);
     },
 
+    // read only prescan deciding whether the tree contains anything the transform would touch,
+    // deliberately a superset of the transform's conditions so false positives just clone needlessly
+    hasFakeNitroLinks(children: Array<any>): boolean {
+        for (const child of children) {
+            if (child == null || typeof child !== "object") continue;
+
+            const href = child.props?.href;
+            if (typeof href === "string") {
+                if (settings.store.transformEmojis && fakeNitroEmojiRegex.test(href)) return true;
+                if (settings.store.transformStickers) {
+                    if (fakeNitroStickerRegex.test(href)) return true;
+
+                    const gifMatch = href.match(fakeNitroGifStickerRegex);
+                    if (gifMatch && StickersStore.getStickerById(gifMatch[1])) return true;
+                }
+            }
+
+            const nested = child.props?.children;
+            if (nested != null && this.hasFakeNitroLinks(Array.isArray(nested) ? nested : [nested])) return true;
+        }
+
+        return false;
+    },
+
     ensureChildrenIsArray(child: ReactElement<any>) {
         if (!Array.isArray(child.props.children)) child.props.children = [child.props.children];
     },
@@ -603,6 +627,10 @@ export default definePlugin({
         };
 
         try {
+            // deep cloning the whole rendered tree of every message just to find out there's
+            // nothing to transform in it is by far the common case, skip it
+            if (!this.hasFakeNitroLinks(content)) return content;
+
             const newContent = modifyChildren(lodash.cloneDeep(content));
             this.trimContent(newContent);
 
