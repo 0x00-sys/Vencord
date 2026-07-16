@@ -26,7 +26,7 @@ import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import type { Channel, Role } from "@vencord/discord-types";
 import { findCssClassesLazy } from "@webpack";
-import { ChannelStore, PermissionsBits, PermissionStore, Tooltip } from "@webpack/common";
+import { ChannelStore, PermissionsBits, PermissionStore, Tooltip, useStateFromStores } from "@webpack/common";
 
 import HiddenChannelLockScreen, { setChannelBeginHeader } from "./components/HiddenChannelLockScreen";
 
@@ -185,6 +185,11 @@ export default definePlugin({
         {
             find: "UNREAD_IMPORTANT:",
             replacement: [
+                {
+                    // Rerender the channel item icon when permissions change, so the lock icon doesn't go stale (#3717)
+                    match: /(?<=function\((\i)\)\{)(?=let\{className:\i,containerClassName:\i,channel:\i,.{0,100}?hasUsersInVoiceChannel:)/,
+                    replace: (_, props) => `$self.useHiddenChannelWatch(${props}.channel);`
+                },
                 {
                     // Make muted channels also appear as unread if hide unreads is false, using the HiddenIconWithMutedStyle and the channel is hidden
                     predicate: () => settings.store.hideUnreads === false && settings.store.showMode === ShowMode.HiddenIconWithMutedStyle,
@@ -497,6 +502,14 @@ export default definePlugin({
         }
 
         return mergedPermissions;
+    },
+
+    useHiddenChannelWatch(channel: Channel) {
+        useStateFromStores(
+            [PermissionStore],
+            () => this.isHiddenChannel(channel),
+            [channel?.id]
+        );
     },
 
     isHiddenChannel(channel: Channel & { channelId?: string; }, checkConnect = false) {
