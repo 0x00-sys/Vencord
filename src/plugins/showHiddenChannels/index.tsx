@@ -18,15 +18,16 @@
 
 import "./style.css";
 
+import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Devs } from "@utils/constants";
 import { classNameFactory } from "@utils/css";
 import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
-import type { Channel, Role } from "@vencord/discord-types";
-import { findCssClassesLazy } from "@webpack";
-import { ChannelStore, PermissionsBits, PermissionStore, Tooltip, useStateFromStores } from "@webpack/common";
+import type { Channel, Guild, Role } from "@vencord/discord-types";
+import { findCssClassesLazy, findStoreLazy } from "@webpack";
+import { ChannelStore, FluxDispatcher, Menu, PermissionsBits, PermissionStore, SelectedGuildStore, Tooltip, useStateFromStores } from "@webpack/common";
 
 import HiddenChannelLockScreen, { setChannelBeginHeader } from "./components/HiddenChannelLockScreen";
 
@@ -42,6 +43,12 @@ const enum ShowMode {
 const CONNECT = 1n << 20n;
 
 export const settings = definePluginSettings({
+    showHiddenChannels: {
+        description: "Show hidden channels (can also be toggled from the server context menu)",
+        type: OptionType.BOOLEAN,
+        default: true,
+        restartNeeded: false
+    },
     hideUnreads: {
         description: "Hide Unreads",
         type: OptionType.BOOLEAN,
@@ -68,12 +75,52 @@ function isUncategorized(objChannel: { channel: Channel; comparator: number; }) 
     return objChannel.channel.id === "null" && objChannel.channel.name === "Uncategorized" && objChannel.comparator === -1;
 }
 
+const CategoryCollapseStore = findStoreLazy("CategoryCollapseStore");
+
+function forceUpdateChannelList() {
+    const guildId = SelectedGuildStore.getGuildId();
+    if (!guildId) return;
+
+    // collapsing and expanding all categories is the only reliable way to make the channel
+    // list recompute its render levels. Recollapse what the user had collapsed afterwards,
+    // that also keeps the debounced server sync of these actions a no-op
+    const collapsed = Object.keys(CategoryCollapseStore.getCollapsedCategories());
+    FluxDispatcher.dispatch({ type: "CATEGORY_COLLAPSE_ALL", guildId });
+    FluxDispatcher.dispatch({ type: "CATEGORY_EXPAND_ALL", guildId });
+    for (const id of collapsed) {
+        FluxDispatcher.dispatch({ type: "CATEGORY_COLLAPSE", id });
+    }
+}
+
+const ToggleContextMenuPatch: NavContextMenuPatchCallback = (children, { guild }: { guild?: Guild; }) => {
+    const { showHiddenChannels } = settings.use(["showHiddenChannels"]);
+    if (!guild) return;
+
+    const group = findGroupChildrenByChildId("privacy", children) ?? children;
+    group.push(
+        <Menu.MenuCheckboxItem
+            id="vc-shc-toggle"
+            label="Show Hidden Channels"
+            checked={showHiddenChannels}
+            action={() => {
+                settings.store.showHiddenChannels = !settings.store.showHiddenChannels;
+                forceUpdateChannelList();
+            }}
+        />
+    );
+};
+
 export default definePlugin({
     name: "ShowHiddenChannels",
     description: "Show channels that you do not have access to view.",
     tags: ["Servers", "Utility"],
     authors: [Devs.BigDuck, Devs.AverageReactEnjoyer, Devs.D3SOX, Devs.Ven, Devs.Nuckyz, Devs.Nickyux, Devs.Rini],
     settings,
+
+    contextMenus: {
+        "guild-context": ToggleContextMenuPatch,
+        "guild-header-popout": ToggleContextMenuPatch
+    },
 
     patches: [
         {
@@ -83,7 +130,7 @@ export default definePlugin({
                 // Remove the special logic for channels we don't have access to
                 {
                     match: /if\(!\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL.+?{if\(this\.id===\i\).+?threadIds:\[\]}}/,
-                    replace: ""
+                    replace: m => `if(!$self.settings.store.showHiddenChannels){${m}}`
                 },
                 // Do not check for unreads when selecting the render level if the channel is hidden
                 {
@@ -92,13 +139,13 @@ export default definePlugin({
                 },
                 // Make channels we dont have access to be the same level as normal ones
                 {
-                    match: /(this\.record\)\?{renderLevel:(.+?),threadIds.+?renderLevel:).+?(?=,threadIds)/g,
-                    replace: (_, rest, defaultRenderLevel) => `${rest}${defaultRenderLevel}`
+                    match: /(this\.record\)\?{renderLevel:(.+?),threadIds.+?renderLevel:)(.+?)(?=,threadIds)/g,
+                    replace: (_, rest, defaultRenderLevel, originalRenderLevel) => `${rest}!$self.settings.store.showHiddenChannels?${originalRenderLevel}:${defaultRenderLevel}`
                 },
                 // Remove permission checking for getRenderLevel function
                 {
-                    match: /(getRenderLevel\(\i\){.+?return)!\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL,this\.record\)\|\|/,
-                    replace: (_, rest) => `${rest} `
+                    match: /(getRenderLevel\(\i\){.+?return)(!\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL,this\.record\))\|\|/,
+                    replace: (_, rest, permCheck) => `${rest}(!$self.settings.store.showHiddenChannels&&${permCheck})||`
                 },
                 // Keep hidden channels out of the Suggested section of community servers
                 {
@@ -445,7 +492,7 @@ export default definePlugin({
             replacement: {
                 // Make mentions of hidden channels work
                 match: /\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL,\i\)/,
-                replace: "true"
+                replace: "($self.settings.store.showHiddenChannels||$&)"
             },
         },
         {
@@ -462,7 +509,7 @@ export default definePlugin({
                 {
                     // Make GuildChannelStore contain hidden channels
                     match: /isChannelGated\(.+?\)(?=&&)/,
-                    replace: m => `${m}&&false`
+                    replace: m => `${m}&&!$self.settings.store.showHiddenChannels`
                 },
                 {
                     // Filter hidden channels from GuildChannelStore.getChannels unless told otherwise
@@ -483,8 +530,8 @@ export default definePlugin({
             find: '"NowPlayingViewStore"',
             replacement: {
                 // Make active now voice states on hidden channels
-                match: /(getVoiceStateForUser.{0,150}?)&&\i\.\i\.canWithPartialContext.{0,20}VIEW_CHANNEL.+?}\)(?=\?)/,
-                replace: "$1"
+                match: /(getVoiceStateForUser.{0,150}?)&&(\i\.\i\.canWithPartialContext.{0,20}VIEW_CHANNEL.+?}\))(?=\?)/,
+                replace: (_, rest, check) => `${rest}&&($self.settings.store.showHiddenChannels||${check})`
             }
         },
         {
@@ -518,6 +565,10 @@ export default definePlugin({
     },
 
     isHiddenChannel(channel: Channel & { channelId?: string; }, checkConnect = false) {
+        return settings.store.showHiddenChannels && this.isHiddenChannelRaw(channel, checkConnect);
+    },
+
+    isHiddenChannelRaw(channel: Channel & { channelId?: string; }, checkConnect = false) {
         try {
             if (channel == null || Object.hasOwn(channel, "channelId") && channel.channelId == null) return false;
 
@@ -533,7 +584,7 @@ export default definePlugin({
     },
 
     resolveGuildChannels(channels: Record<string | number, Array<{ channel: Channel; comparator: number; }> | string | number>, shouldIncludeHidden: boolean) {
-        if (shouldIncludeHidden) return channels;
+        if (shouldIncludeHidden && settings.store.showHiddenChannels) return channels;
 
         const res = {};
         for (const [key, maybeObjChannels] of Object.entries(channels)) {
@@ -545,7 +596,7 @@ export default definePlugin({
             res[key] ??= [];
 
             for (const objChannel of maybeObjChannels) {
-                if (isUncategorized(objChannel) || objChannel.channel.id === null || !this.isHiddenChannel(objChannel.channel)) res[key].push(objChannel);
+                if (isUncategorized(objChannel) || objChannel.channel.id === null || !this.isHiddenChannelRaw(objChannel.channel)) res[key].push(objChannel);
             }
         }
 
