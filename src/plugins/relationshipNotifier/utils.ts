@@ -23,10 +23,10 @@ import { getUniqueUsername, openUserProfile } from "@utils/discord";
 import { FluxStore } from "@vencord/discord-types";
 import { ChannelType, RelationshipType } from "@vencord/discord-types/enums";
 import { findStoreLazy } from "@webpack";
-import { ChannelStore, GuildMemberStore, GuildStore, RelationshipStore, UserStore, UserUtils } from "@webpack/common";
+import { ChannelStore, GuildMemberStore, GuildStore, NavigationRouter, RelationshipStore, UserStore, UserUtils } from "@webpack/common";
 
 import settings from "./settings";
-import { SimpleGroupChannel, SimpleGuild } from "./types";
+import { CachedFriendInfo, SimpleGroupChannel, SimpleGuild } from "./types";
 
 export const GuildAvailabilityStore = findStoreLazy("GuildAvailabilityStore") as FluxStore & {
     totalGuilds: number;
@@ -39,7 +39,9 @@ const guilds = new Map<string, SimpleGuild>();
 const groups = new Map<string, SimpleGroupChannel>();
 const friends = {
     friends: [] as string[],
-    requests: [] as string[]
+    requests: [] as string[],
+    // usernames and dm channel ids, so removals can still be attributed when the account is gone (#2073)
+    infos: {} as Record<string, CachedFriendInfo>
 };
 
 const guildsKey = () => `relationship-notifier-guilds-${UserStore.getCurrentUser().id}`;
@@ -58,7 +60,7 @@ export async function syncAndRunChecks() {
         guildsKey(),
         groupsKey(),
         friendsKey()
-    ]) as [Map<string, SimpleGuild> | undefined, Map<string, SimpleGroupChannel> | undefined, Record<"friends" | "requests", string[]> | undefined];
+    ]) as [Map<string, SimpleGuild> | undefined, Map<string, SimpleGroupChannel> | undefined, (Record<"friends" | "requests", string[]> & { infos?: Record<string, CachedFriendInfo>; }) | undefined];
 
     await Promise.all([syncGuilds(), syncGroups(), syncFriends()]);
 
@@ -81,12 +83,13 @@ export async function syncAndRunChecks() {
             for (const id of oldFriends.friends) {
                 if (friends.friends.includes(id)) continue;
 
+                const info = oldFriends.infos?.[id];
                 const user = await UserUtils.getUser(id).catch(() => void 0);
-                if (user)
+                if (user || info)
                     notify(
-                        `You are no longer friends with ${getUniqueUsername(user)}.`,
-                        user.getAvatarURL(undefined, undefined, false),
-                        () => openUserProfile(user.id)
+                        `You are no longer friends with ${user ? getUniqueUsername(user) : info!.username}.`,
+                        user?.getAvatarURL(undefined, undefined, false),
+                        makeOnClick(id, user != null, info)
                     );
             }
         }
@@ -98,16 +101,27 @@ export async function syncAndRunChecks() {
                     [RelationshipType.FRIEND, RelationshipType.BLOCKED, RelationshipType.OUTGOING_REQUEST].includes(RelationshipStore.getRelationshipType(id))
                 ) continue;
 
+                const info = oldFriends.infos?.[id];
                 const user = await UserUtils.getUser(id).catch(() => void 0);
-                if (user)
+                if (user || info)
                     notify(
-                        `Friend request from ${getUniqueUsername(user)} has been revoked.`,
-                        user.getAvatarURL(undefined, undefined, false),
-                        () => openUserProfile(user.id)
+                        `Friend request from ${user ? getUniqueUsername(user) : info!.username} has been revoked.`,
+                        user?.getAvatarURL(undefined, undefined, false),
+                        makeOnClick(id, user != null, info)
                     );
             }
         }
     }
+}
+
+export function getFriendInfo(id: string): CachedFriendInfo | undefined {
+    return friends.infos[id];
+}
+
+export function makeOnClick(id: string, userExists: boolean, info?: CachedFriendInfo) {
+    if (userExists) return () => openUserProfile(id);
+    if (info?.dmChannelId) return () => NavigationRouter.transitionTo(`/channels/@me/${info.dmChannelId}`);
+    return undefined;
 }
 
 export function notify(text: string, icon?: string, onClick?: () => void) {
@@ -174,14 +188,27 @@ export async function syncFriends() {
     friends.friends = [];
     friends.requests = [];
 
+    const oldInfos = friends.infos;
+    friends.infos = {};
+
+    const cacheInfo = (id: string) => {
+        const user = UserStore.getUser(id);
+        const info = user
+            ? { username: getUniqueUsername(user), dmChannelId: ChannelStore.getDMFromUserId(id) ?? oldInfos[id]?.dmChannelId }
+            : oldInfos[id];
+        if (info) friends.infos[id] = info;
+    };
+
     const relationShips = RelationshipStore.getMutableRelationships();
     for (const [id, type] of relationShips) {
         switch (type) {
             case RelationshipType.FRIEND:
                 friends.friends.push(id);
+                cacheInfo(id);
                 break;
             case RelationshipType.INCOMING_REQUEST:
                 friends.requests.push(id);
+                cacheInfo(id);
                 break;
         }
     }
