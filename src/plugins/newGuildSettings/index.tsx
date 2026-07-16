@@ -129,8 +129,8 @@ export default definePlugin({
         {
             find: ",acceptInvite(",
             replacement: {
-                match: /INVITE_ACCEPT_SUCCESS.+?,(\i)=null!=.+?;/,
-                replace: (m, guildId) => `${m}$self.applyDefaultSettings(${guildId});`
+                match: /null!=(\i)&&\i\.new_member&&!\i\.show_verification_form\)\{/,
+                replace: "$&$self.applyDefaultSettings($1);"
             }
         },
         {
