@@ -248,7 +248,8 @@ export const enum OptionType {
     SELECT,
     SLIDER,
     COMPONENT,
-    CUSTOM
+    CUSTOM,
+    ARRAY
 }
 
 export type SettingsDefinition = Record<string, PluginSettingDef>;
@@ -265,7 +266,8 @@ export type PluginSettingDef =
     | PluginSettingBooleanDef
     | PluginSettingSelectDef
     | PluginSettingSliderDef
-    | PluginSettingBigIntDef;
+    | PluginSettingBigIntDef
+    | PluginSettingArrayDef;
 
 export interface PluginSettingDefCommon extends IsDisabledOrHidden, IsValid<unknown> {
     description: string;
@@ -306,6 +308,12 @@ export interface PluginSettingStringDef extends PluginSettingDefCommon {
     default?: string;
     /** Whether to use a multiline text area */
     multiline?: boolean;
+}
+export interface PluginSettingArrayDef extends PluginSettingDefCommon {
+    type: OptionType.ARRAY;
+    default?: string[];
+    /** Validate a single entry. Either return a boolean for a generic error message or a string for a custom error message */
+    validateItem?(value: string): boolean | string;
 }
 export interface PluginSettingNumberDef extends PluginSettingDefCommon {
     type: OptionType.NUMBER;
@@ -373,6 +381,7 @@ export interface PluginSettingComponentProps {
 
 /** Maps a `PluginSettingDef` to its value type */
 type PluginSettingType<O extends PluginSettingDef> = O extends PluginSettingStringDef ? string :
+    O extends PluginSettingArrayDef ? string[] :
     O extends PluginSettingNumberDef ? number :
     O extends PluginSettingBigIntDef ? BigInt :
     O extends PluginSettingBooleanDef ? boolean :
