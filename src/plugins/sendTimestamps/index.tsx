@@ -36,16 +36,21 @@ const settings = definePluginSettings({
     },
 });
 
-function parseTime(time: string) {
-    const cleanTime = time.slice(1, -1).replace(/(\d)(AM|PM)$/i, "$1 $2");
+const ShorthandRegex = /`(\d{1,2}:\d{2} ?(?:AM|PM)?)(?::(\w))?`/gi;
+
+function parseTime(match: string, time: string, format?: string) {
+    // format letters are case sensitive, `:r` should not silently become `:R`
+    if (format != null && !Formats.includes(format as Format)) return match;
+
+    const cleanTime = time.replace(/(\d)(AM|PM)$/i, "$1 $2");
 
     let ms = new Date(`${new Date().toDateString()} ${cleanTime}`).getTime() / 1000;
-    if (isNaN(ms)) return time;
+    if (isNaN(ms)) return match;
 
     // add 24h if time is in the past
     if (Date.now() / 1000 > ms) ms += 86400;
 
-    return `<t:${Math.round(ms)}:t>`;
+    return `<t:${Math.round(ms)}:${format || "t"}>`;
 }
 
 const Formats = ["", "t", "T", "d", "D", "f", "F", "s", "S", "R"] as const;
@@ -164,7 +169,7 @@ export default definePlugin({
 
     onBeforeMessageSend(_, msg) {
         if (settings.store.replaceMessageContents) {
-            msg.content = msg.content.replace(/`\d{1,2}:\d{2} ?(?:AM|PM)?`/gi, parseTime);
+            msg.content = msg.content.replace(ShorthandRegex, parseTime);
         }
     },
 
@@ -175,13 +180,16 @@ export default definePlugin({
             "17:59",
             "24:00",
             "12:00 AM",
-            "0:13PM"
+            "0:13PM",
+            "18:30:R",
+            "9:00 PM:F"
         ].map(s => `\`${s}\``);
 
         return (
             <>
                 <Forms.FormText>
-                    To quickly send time only timestamps, include timestamps formatted as `HH:MM` (including the backticks!) in your message
+                    To quickly send time only timestamps, include timestamps formatted as `HH:MM` (including the backticks!) in your message.
+                    You can pick a different display style with a format suffix, like `HH:MM:R` for a relative timestamp
                 </Forms.FormText>
                 <Forms.FormText>
                     See below for examples.
@@ -192,7 +200,7 @@ export default definePlugin({
                     <ul>
                         {samples.map(s => (
                             <li key={s}>
-                                <code>{s}</code> {"->"} {Parser.parse(parseTime(s))}
+                                <code>{s}</code> {"->"} {Parser.parse(s.replace(ShorthandRegex, parseTime))}
                             </li>
                         ))}
                     </ul>
