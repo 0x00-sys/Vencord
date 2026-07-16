@@ -51,7 +51,7 @@ type KeysOfType<Object, Type> = {
 }[keyof Object];
 
 function Switches() {
-    const settings = useSettings(["useQuickCss", "enableReactDevtools", "frameless", "winNativeTitleBar", "transparent", "winCtrlQ", "disableMinSize"]);
+    const settings = useSettings(["useQuickCss", "enableReactDevtools", "frameless", "winNativeTitleBar", "transparent", "winCtrlQ", "winAltF4ToTray", "disableMinSize"]);
 
     const Switches = [
         {
@@ -86,6 +86,11 @@ function Switches() {
         !IS_WEB && IS_WINDOWS && {
             key: "winCtrlQ",
             title: "Register Ctrl+Q as shortcut to close Discord (Alternative to Alt+F4)",
+            restartRequired: true
+        },
+        !IS_WEB && IS_WINDOWS && {
+            key: "winAltF4ToTray",
+            title: "Make Alt+F4 follow Discord's minimize to tray setting instead of always quitting",
             restartRequired: true
         },
     ] satisfies Array<false | {
