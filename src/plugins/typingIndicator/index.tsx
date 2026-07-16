@@ -93,43 +93,44 @@ function TypingIndicator({ channelId, guildId }: { channelId: string; guildId: s
         }
     }
 
-    if (typingUsersArray.length > 0) {
-        return (
-            <Tooltip text={tooltipText!}>
-                {props => (
-                    <div className="vc-typing-indicator" {...props}>
-                        {((settings.store.indicatorMode & IndicatorMode.Avatars) === IndicatorMode.Avatars) && (
-                            <div
-                                onClick={e => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                }}
-                                onKeyPress={e => e.stopPropagation()}
-                            >
-                                <UserSummaryItem
-                                    users={typingUsersArray.map(id => UserStore.getUser(id))}
-                                    guildId={guildId}
-                                    renderIcon={false}
-                                    max={3}
-                                    showDefaultAvatarsForNullUsers
-                                    showUserPopout
-                                    size={16}
-                                    className="vc-typing-indicator-avatars"
-                                />
-                            </div>
-                        )}
-                        {((settings.store.indicatorMode & IndicatorMode.Dots) === IndicatorMode.Dots) && (
-                            <div className="vc-typing-indicator-dots">
-                                <ThreeDots dotRadius={3} themed={true} />
-                            </div>
-                        )}
-                    </div>
-                )}
-            </Tooltip>
-        );
+    // in Avatars mode always stay mounted, so an open user popout survives its user no longer typing (#3164)
+    if (typingUsersArray.length === 0 && (settings.store.indicatorMode & IndicatorMode.Avatars) === 0) {
+        return null;
     }
 
-    return null;
+    return (
+        <Tooltip text={tooltipText! ?? ""}>
+            {props => (
+                <div className="vc-typing-indicator" {...props}>
+                    {((settings.store.indicatorMode & IndicatorMode.Avatars) === IndicatorMode.Avatars) && (
+                        <div
+                            onClick={e => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                            }}
+                            onKeyPress={e => e.stopPropagation()}
+                        >
+                            <UserSummaryItem
+                                users={typingUsersArray.map(id => UserStore.getUser(id))}
+                                guildId={guildId}
+                                renderIcon={false}
+                                max={3}
+                                showDefaultAvatarsForNullUsers
+                                showUserPopout
+                                size={16}
+                                className={typingUsersArray.length > 0 ? "vc-typing-indicator-avatars" : ""}
+                            />
+                        </div>
+                    )}
+                    {((settings.store.indicatorMode & IndicatorMode.Dots) === IndicatorMode.Dots) && typingUsersArray.length > 0 && (
+                        <div className="vc-typing-indicator-dots">
+                            <ThreeDots dotRadius={3} themed={true} />
+                        </div>
+                    )}
+                </div>
+            )}
+        </Tooltip>
+    );
 }
 
 const settings = definePluginSettings({
