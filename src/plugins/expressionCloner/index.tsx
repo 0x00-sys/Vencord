@@ -95,6 +95,20 @@ async function fetchSticker(id: string) {
     return body as Sticker;
 }
 
+function buildFakeSticker(sticker: { id: string; name: string; format_type: number; }) {
+    return {
+        id: sticker.id,
+        name: sticker.name,
+        format_type: sticker.format_type,
+        // the related emoji field, needs at least one character
+        tags: " ",
+        description: "",
+        type: 2,
+        available: true,
+        guild_id: "0"
+    } as unknown as Sticker;
+}
+
 async function cloneSticker(guildId: string, sticker: Sticker) {
     const data = new FormData();
     data.append("name", sticker.name);
@@ -379,9 +393,11 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                 }));
             case "sticker":
                 const sticker = props.message.stickerItems.find(s => s.id === favoriteableId);
-                if (sticker?.format_type === 3 /* LOTTIE */) return;
+                if (sticker == null || sticker.format_type === 3 /* LOTTIE */) return;
 
-                return buildMenuItem("Sticker", () => fetchSticker(favoriteableId));
+                // the fetch 404s when the sticker's server was deleted, which used to hang the
+                // modal forever. The message still has enough data to clone from
+                return buildMenuItem("Sticker", () => fetchSticker(favoriteableId).catch(() => buildFakeSticker(sticker)));
         }
     })();
 
