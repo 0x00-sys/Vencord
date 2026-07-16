@@ -291,6 +291,12 @@ export default definePlugin({
                 attachments.push(oldAttachment);
             }
         }
+        // edits can also add attachments, don't drop those
+        for (const newAttachment of newMessage.attachments) {
+            if (oldMessage.attachments.every(a => a.id !== newAttachment.id)) {
+                attachments.push(newAttachment);
+            }
+        }
         return attachments;
     },
 
