@@ -74,16 +74,16 @@ export default definePlugin({
         ) return;
 
         const emojiContext = EmojiStore.getDisambiguatedEmojiContext();
+        const { emojis } = query.results;
 
-        query.results.emojis = query.results.emojis.sort((a, b) => {
-            const aIsFavorite = emojiContext.isFavoriteEmojiWithoutFetchingLatest(a);
-            const bIsFavorite = emojiContext.isFavoriteEmojiWithoutFetchingLatest(b);
+        // this runs on the full unsliced result list every keystroke, a single pass partition
+        // beats a sort that hits the favorites store n log n times
+        const favorites: Emoji[] = [];
+        const rest: Emoji[] = [];
+        for (const emoji of emojis) {
+            (emojiContext.isFavoriteEmojiWithoutFetchingLatest(emoji) ? favorites : rest).push(emoji);
+        }
 
-            if (aIsFavorite && !bIsFavorite) return -1;
-
-            if (!aIsFavorite && bIsFavorite) return 1;
-
-            return 0;
-        }).slice(0, query.results.emojis.sliceTo ?? Infinity);
+        query.results.emojis = favorites.concat(rest).slice(0, emojis.sliceTo ?? Infinity);
     }
 });
