@@ -260,6 +260,18 @@ export function migratePluginSetting(pluginName: string, oldSetting: string, new
     SettingsStore.markAsChanged();
 }
 
+/** Migrate a delimiter separated string setting to OptionType.ARRAY */
+export function migratePluginSettingToArray(pluginName: string, setting: string, separator: RegExp | string = ",") {
+    const settings = SettingsStore.plain.plugins[pluginName];
+    if (!settings || typeof settings[setting] !== "string") return;
+
+    settings[setting] = (settings[setting] as string)
+        .split(separator)
+        .map(s => s.trim())
+        .filter(Boolean);
+    SettingsStore.markAsChanged();
+}
+
 export function definePluginSettings<
     Def extends SettingsDefinition,
     Checks extends SettingsChecks<Def>,

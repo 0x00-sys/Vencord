@@ -20,11 +20,12 @@ import "./messageLogger.css";
 
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { updateMessage } from "@api/MessageUpdater";
-import { definePluginSettings } from "@api/Settings";
+import { definePluginSettings, migratePluginSettingToArray } from "@api/Settings";
 import { disableStyle, enableStyle } from "@api/Styles";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Devs, SUPPORT_CATEGORY_ID, VENBOT_USER_ID } from "@utils/constants";
 import { getIntlMessage } from "@utils/discord";
+import { isSnowflake } from "@utils/guards";
 import { Logger } from "@utils/Logger";
 import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
@@ -52,6 +53,10 @@ interface MLAttachment extends MessageAttachment {
 }
 
 const MessageClasses = findCssClassesLazy("edited", "communicationDisabled", "isSystemMessage");
+
+migratePluginSettingToArray("MessageLogger", "ignoreUsers");
+migratePluginSettingToArray("MessageLogger", "ignoreChannels");
+migratePluginSettingToArray("MessageLogger", "ignoreGuilds");
 
 const settings = definePluginSettings({
     deleteStyle: {
@@ -96,22 +101,22 @@ const settings = definePluginSettings({
         default: false
     },
     ignoreUsers: {
-        type: OptionType.STRING,
-        description: "Comma-separated list of user IDs to ignore",
-        default: "",
-        multiline: true
+        type: OptionType.ARRAY,
+        description: "User IDs to ignore",
+        default: [] as string[],
+        validateItem: isSnowflake
     },
     ignoreChannels: {
-        type: OptionType.STRING,
-        description: "Comma-separated list of channel IDs to ignore",
-        default: "",
-        multiline: true
+        type: OptionType.ARRAY,
+        description: "Channel IDs to ignore",
+        default: [] as string[],
+        validateItem: isSnowflake
     },
     ignoreGuilds: {
-        type: OptionType.STRING,
-        description: "Comma-separated list of guild IDs to ignore",
-        default: "",
-        multiline: true
+        type: OptionType.ARRAY,
+        description: "Guild IDs to ignore",
+        default: [] as string[],
+        validateItem: isSnowflake
     },
 });
 
