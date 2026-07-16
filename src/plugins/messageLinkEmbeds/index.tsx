@@ -48,6 +48,14 @@ const messageCache = new Map<string, {
     fetched: boolean;
 }>();
 
+// entries are full message records and were never evicted, keep the cache bounded
+function cacheMessage(messageID: string, entry: { message?: Message; fetched: boolean; }) {
+    if (!messageCache.has(messageID) && messageCache.size >= 250) {
+        messageCache.delete(messageCache.keys().next().value!);
+    }
+    messageCache.set(messageID, entry);
+}
+
 const Embed = findComponentLazy(m => m.prototype?.renderSuppressButton);
 const ChannelMessage = findComponentByCodeLazy("childrenExecutedCommand:", ".hideAccessories");
 let AutoModEmbed: ComponentType<any> = () => null;
@@ -137,7 +145,7 @@ async function fetchMessage(channelID: string, messageID: string) {
     const cached = messageCache.get(messageID);
     if (cached) return cached.message;
 
-    messageCache.set(messageID, { fetched: false });
+    cacheMessage(messageID, { fetched: false });
 
     const res = await RestAPI.get({
         url: Constants.Endpoints.MESSAGES(channelID),
@@ -154,7 +162,7 @@ async function fetchMessage(channelID: string, messageID: string) {
     const message: Message = MessageStore.getMessages(msg.channel_id).receiveMessage(msg).get(msg.id);
     if (!message) return;
 
-    messageCache.set(message.id, {
+    cacheMessage(message.id, {
         message,
         fetched: true
     });
@@ -256,7 +264,7 @@ function MessageEmbedAccessory({ message }: { message: Message; }) {
         if (!linkedMessage) {
             linkedMessage ??= MessageStore.getMessage(channelID, messageID);
             if (linkedMessage) {
-                messageCache.set(messageID, { message: linkedMessage, fetched: true });
+                cacheMessage(messageID, { message: linkedMessage, fetched: true });
             } else {
 
                 messageFetchQueue.unshift(() => fetchMessage(channelID, messageID)
