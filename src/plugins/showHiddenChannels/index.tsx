@@ -99,6 +99,11 @@ export default definePlugin({
                 {
                     match: /(getRenderLevel\(\i\){.+?return)!\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL,this\.record\)\|\|/,
                     replace: (_, rest) => `${rest} `
+                },
+                // Keep hidden channels out of the Suggested section of community servers
+                {
+                    match: /(?<=\.GUILD_DIRECTORY\|\|)(?=!(\i)\.optInEnabled\|\|\1\.optedInChannels\.has\((\i)\.id\))/,
+                    replace: (_, _guild, channel) => `$self.isHiddenChannel(${channel})||`
                 }
             ]
         },
