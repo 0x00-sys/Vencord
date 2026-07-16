@@ -581,8 +581,8 @@ export default definePlugin({
     },
 
     isEnabled(guildId?: string | null) {
-        return settings.store.showHiddenChannels
-            && (guildId == null || !settings.store.disabledGuilds.includes(guildId));
+        const { showHiddenChannels, disabledGuilds } = settings.store;
+        return showHiddenChannels && (guildId == null || !disabledGuilds.includes(guildId));
     },
 
     isHiddenChannel(channel: Channel & { channelId?: string; }, checkConnect = false) {
@@ -614,7 +614,9 @@ export default definePlugin({
     },
 
     resolveGuildChannels(channels: Record<string | number, Array<{ channel: Channel; comparator: number; }> | string | number>, shouldIncludeHidden: boolean) {
-        if (shouldIncludeHidden && settings.store.showHiddenChannels && settings.store.disabledGuilds.length === 0) return channels;
+        // hoisted out of the per channel loop, each settings.store read costs proxy round trips
+        const { showHiddenChannels, disabledGuilds } = settings.store;
+        if (shouldIncludeHidden && showHiddenChannels && disabledGuilds.length === 0) return channels;
 
         const res = {};
         for (const [key, maybeObjChannels] of Object.entries(channels)) {
@@ -630,7 +632,8 @@ export default definePlugin({
                     isUncategorized(objChannel)
                     || objChannel.channel.id === null
                     || !this.isHiddenChannelRaw(objChannel.channel)
-                    || shouldIncludeHidden && this.isEnabled(objChannel.channel.guild_id)
+                    || shouldIncludeHidden && showHiddenChannels
+                    && (objChannel.channel.guild_id == null || !disabledGuilds.includes(objChannel.channel.guild_id))
                 ) res[key].push(objChannel);
             }
         }
