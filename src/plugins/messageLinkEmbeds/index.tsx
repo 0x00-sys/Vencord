@@ -18,9 +18,10 @@
 
 import { addMessageAccessory, removeMessageAccessory } from "@api/MessageAccessories";
 import { updateMessage } from "@api/MessageUpdater";
-import { definePluginSettings } from "@api/Settings";
+import { definePluginSettings, migratePluginSettingToArray } from "@api/Settings";
 import { getUserSettingLazy } from "@api/UserSettings";
 import { Devs } from "@utils/constants.js";
+import { isSnowflake } from "@utils/guards";
 import { classes } from "@utils/misc";
 import { Queue } from "@utils/Queue";
 import definePlugin, { OptionType } from "@utils/types";
@@ -73,6 +74,8 @@ interface MessageEmbedProps {
 
 const messageFetchQueue = new Queue();
 
+migratePluginSettingToArray("MessageLinkEmbeds", "idList");
+
 const settings = definePluginSettings({
     messageBackgroundColor: {
         description: "Background color for messages in rich embeds",
@@ -114,10 +117,10 @@ const settings = definePluginSettings({
     },
     idList: {
         displayName: "ID List",
-        description: "Guild/channel/user IDs to blacklist or whitelist (separate with comma)",
-        type: OptionType.STRING,
-        default: "",
-        multiline: true,
+        description: "Guild/channel/user IDs to blacklist or whitelist",
+        type: OptionType.ARRAY,
+        default: [] as string[],
+        validateItem: isSnowflake
     },
     clearMessageCache: {
         type: OptionType.COMPONENT,

@@ -16,26 +16,28 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { definePluginSettings } from "@api/Settings";
+import { definePluginSettings, migratePluginSettingToArray } from "@api/Settings";
 import { Devs } from "@utils/constants";
+import { isSnowflake } from "@utils/guards";
 import definePlugin, { OptionType } from "@utils/types";
 import type { Message } from "@vencord/discord-types";
 import { ChannelStore, GuildMemberStore } from "@webpack/common";
 
+migratePluginSettingToArray("NoReplyMention", "userList", /[,\s]+/);
+migratePluginSettingToArray("NoReplyMention", "roleList", /[,\s]+/);
+
 const settings = definePluginSettings({
     userList: {
-        description:
-            "List of user ids to allow or exempt pings for (separated by commas or spaces)",
-        type: OptionType.STRING,
-        default: "1234567890123445,1234567890123445",
-        multiline: true
+        description: "User ids to allow or exempt pings for",
+        type: OptionType.ARRAY,
+        default: [] as string[],
+        validateItem: isSnowflake
     },
     roleList: {
-        description:
-            "List of role ids to allow or exempt pings for (separated by commas or spaces)",
-        type: OptionType.STRING,
-        default: "1234567890123445,1234567890123445",
-        multiline: true
+        description: "Role ids to allow or exempt pings for",
+        type: OptionType.ARRAY,
+        default: [] as string[],
+        validateItem: isSnowflake
     },
     shouldPingListed: {
         description: "Behaviour",
