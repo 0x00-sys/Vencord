@@ -266,6 +266,16 @@ export default definePlugin({
             ]
         },
         {
+            find: "APPLICATION_LIBRARY,render:",
+            predicate: () => settings.store.sidebar,
+            replacement: {
+                // Discord uses the resizable container's offsetWidth as the drag start width,
+                // which includes our folder sidebar, subtract it when clamping (#3686)
+                match: /resizableDomNodeRef:(\i),/,
+                replace: "$&getClampedValue:(v,min,max)=>$self.getClampedSidebarWidth(v,min,max,$1),"
+            }
+        },
+        {
             find: "#{intl::DISCODO_DISABLED}",
             predicate: () => settings.store.closeAllHomeButton,
             replacement: {
@@ -402,5 +412,16 @@ export default definePlugin({
         if (props?.folderNode?.id === 1) return false;
 
         return !props?.isBetterFolders && isExpanded;
+    },
+
+    getClampedSidebarWidth(value: number, min: number, max: number, sidebarRef: { current: HTMLElement | null; }) {
+        try {
+            const folderSidebar = sidebarRef.current?.querySelector<HTMLElement>(".vc-betterFolders-sidebar");
+            if (folderSidebar != null) value -= folderSidebar.getBoundingClientRect().width;
+        } catch (e) {
+            new Logger("BetterFolders").error(e);
+        }
+
+        return Math.min(Math.max(value, min), max);
     }
 });
