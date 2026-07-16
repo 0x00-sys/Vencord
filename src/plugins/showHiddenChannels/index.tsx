@@ -68,6 +68,10 @@ export const settings = definePluginSettings({
         description: "Whether the allowed users and roles dropdown on hidden channels should be open by default",
         type: OptionType.BOOLEAN,
         default: true
+    },
+    disabledGuilds: {
+        type: OptionType.CUSTOM,
+        default: [] as string[]
     }
 });
 
@@ -77,8 +81,8 @@ function isUncategorized(objChannel: { channel: Channel; comparator: number; }) 
 
 const CategoryCollapseStore = findStoreLazy("CategoryCollapseStore");
 
-function forceUpdateChannelList() {
-    const guildId = SelectedGuildStore.getGuildId();
+function forceUpdateChannelList(guildId?: string | null) {
+    guildId ??= SelectedGuildStore.getGuildId();
     if (!guildId) return;
 
     // collapsing and expanding all categories is the only reliable way to make the channel
@@ -93,7 +97,7 @@ function forceUpdateChannelList() {
 }
 
 const ToggleContextMenuPatch: NavContextMenuPatchCallback = (children, { guild }: { guild?: Guild; }) => {
-    const { showHiddenChannels } = settings.use(["showHiddenChannels"]);
+    const { showHiddenChannels, disabledGuilds } = settings.use(["showHiddenChannels", "disabledGuilds"]);
     if (!guild) return;
 
     const group = findGroupChildrenByChildId("privacy", children) ?? children;
@@ -104,7 +108,19 @@ const ToggleContextMenuPatch: NavContextMenuPatchCallback = (children, { guild }
             checked={showHiddenChannels}
             action={() => {
                 settings.store.showHiddenChannels = !settings.store.showHiddenChannels;
-                forceUpdateChannelList();
+                forceUpdateChannelList(guild.id);
+            }}
+        />,
+        <Menu.MenuCheckboxItem
+            id="vc-shc-toggle-guild"
+            label="Show in This Server"
+            checked={showHiddenChannels && !disabledGuilds.includes(guild.id)}
+            disabled={!showHiddenChannels}
+            action={() => {
+                settings.store.disabledGuilds = disabledGuilds.includes(guild.id)
+                    ? disabledGuilds.filter(id => id !== guild.id)
+                    : [...disabledGuilds, guild.id];
+                forceUpdateChannelList(guild.id);
             }}
         />
     );
@@ -130,7 +146,7 @@ export default definePlugin({
                 // Remove the special logic for channels we don't have access to
                 {
                     match: /if\(!\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL.+?{if\(this\.id===\i\).+?threadIds:\[\]}}/,
-                    replace: m => `if(!$self.settings.store.showHiddenChannels){${m}}`
+                    replace: m => `if(!$self.isEnabled(this.record.guild_id)){${m}}`
                 },
                 // Do not check for unreads when selecting the render level if the channel is hidden
                 {
@@ -140,12 +156,12 @@ export default definePlugin({
                 // Make channels we dont have access to be the same level as normal ones
                 {
                     match: /(this\.record\)\?{renderLevel:(.+?),threadIds.+?renderLevel:)(.+?)(?=,threadIds)/g,
-                    replace: (_, rest, defaultRenderLevel, originalRenderLevel) => `${rest}!$self.settings.store.showHiddenChannels?${originalRenderLevel}:${defaultRenderLevel}`
+                    replace: (_, rest, defaultRenderLevel, originalRenderLevel) => `${rest}!$self.isEnabled(this.record.guild_id)?${originalRenderLevel}:${defaultRenderLevel}`
                 },
                 // Remove permission checking for getRenderLevel function
                 {
                     match: /(getRenderLevel\(\i\){.+?return)(!\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL,this\.record\))\|\|/,
-                    replace: (_, rest, permCheck) => `${rest}(!$self.settings.store.showHiddenChannels&&${permCheck})||`
+                    replace: (_, rest, permCheck) => `${rest}(!$self.isEnabled(this.record.guild_id)&&${permCheck})||`
                 },
                 // Keep hidden channels out of the Suggested section of community servers
                 {
@@ -491,8 +507,8 @@ export default definePlugin({
             find: "\"^/guild-stages/(\\\\d+)(?:/)?(\\\\d+)?\"",
             replacement: {
                 // Make mentions of hidden channels work
-                match: /\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL,\i\)/,
-                replace: "($self.settings.store.showHiddenChannels||$&)"
+                match: /\i\.\i\.can\(\i\.\i\.VIEW_CHANNEL,(\i)\)/,
+                replace: (m, channel) => `($self.isHiddenChannel(${channel})||${m})`
             },
         },
         {
@@ -508,8 +524,8 @@ export default definePlugin({
             replacement: [
                 {
                     // Make GuildChannelStore contain hidden channels
-                    match: /isChannelGated\(.+?\)(?=&&)/,
-                    replace: m => `${m}&&!$self.settings.store.showHiddenChannels`
+                    match: /isChannelGated\((\i)\.guild_id,\i\.id\)(?=&&)/,
+                    replace: (m, channel) => `${m}&&!$self.isHiddenChannel(${channel})`
                 },
                 {
                     // Filter hidden channels from GuildChannelStore.getChannels unless told otherwise
@@ -530,8 +546,8 @@ export default definePlugin({
             find: '"NowPlayingViewStore"',
             replacement: {
                 // Make active now voice states on hidden channels
-                match: /(getVoiceStateForUser.{0,150}?)&&(\i\.\i\.canWithPartialContext.{0,20}VIEW_CHANNEL.+?}\))(?=\?)/,
-                replace: (_, rest, check) => `${rest}&&($self.settings.store.showHiddenChannels||${check})`
+                match: /(getVoiceStateForUser.{0,150}?)&&(\i\.\i\.canWithPartialContext.{0,20}VIEW_CHANNEL,(\{channelId:\i\.channelId\})\))(?=\?)/,
+                replace: (_, rest, check, partialChannel) => `${rest}&&($self.isHiddenChannel(${partialChannel})||${check})`
             }
         },
         {
@@ -564,8 +580,22 @@ export default definePlugin({
         );
     },
 
+    isEnabled(guildId?: string | null) {
+        return settings.store.showHiddenChannels
+            && (guildId == null || !settings.store.disabledGuilds.includes(guildId));
+    },
+
     isHiddenChannel(channel: Channel & { channelId?: string; }, checkConnect = false) {
-        return settings.store.showHiddenChannels && this.isHiddenChannelRaw(channel, checkConnect);
+        try {
+            if (channel == null || Object.hasOwn(channel, "channelId") && channel.channelId == null) return false;
+            if (channel.channelId != null) channel = ChannelStore.getChannel(channel.channelId);
+            if (channel == null) return false;
+
+            return this.isEnabled(channel.guild_id) && this.isHiddenChannelRaw(channel, checkConnect);
+        } catch (e) {
+            console.error("[ViewHiddenChannels#isHiddenChannel]: ", e);
+            return false;
+        }
     },
 
     isHiddenChannelRaw(channel: Channel & { channelId?: string; }, checkConnect = false) {
@@ -584,7 +614,7 @@ export default definePlugin({
     },
 
     resolveGuildChannels(channels: Record<string | number, Array<{ channel: Channel; comparator: number; }> | string | number>, shouldIncludeHidden: boolean) {
-        if (shouldIncludeHidden && settings.store.showHiddenChannels) return channels;
+        if (shouldIncludeHidden && settings.store.showHiddenChannels && settings.store.disabledGuilds.length === 0) return channels;
 
         const res = {};
         for (const [key, maybeObjChannels] of Object.entries(channels)) {
@@ -596,7 +626,12 @@ export default definePlugin({
             res[key] ??= [];
 
             for (const objChannel of maybeObjChannels) {
-                if (isUncategorized(objChannel) || objChannel.channel.id === null || !this.isHiddenChannelRaw(objChannel.channel)) res[key].push(objChannel);
+                if (
+                    isUncategorized(objChannel)
+                    || objChannel.channel.id === null
+                    || !this.isHiddenChannelRaw(objChannel.channel)
+                    || shouldIncludeHidden && this.isEnabled(objChannel.channel.guild_id)
+                ) res[key].push(objChannel);
             }
         }
 
