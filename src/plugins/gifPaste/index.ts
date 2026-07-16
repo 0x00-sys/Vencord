@@ -27,13 +27,23 @@ export default definePlugin({
     tags: ["Media", "Chat"],
     authors: [Devs.Ven],
 
-    patches: [{
-        find: "handleSelectGIF=",
-        replacement: {
-            match: /handleSelectGIF=(\i)=>\{/,
-            replace: "$&if (!this?.props?.className) return $self.handleSelect($1);"
+    patches: [
+        {
+            find: "handleSelectGIF=",
+            replacement: {
+                match: /handleSelectGIF=(\i)=>\{/,
+                replace: "$&if (!this?.props?.className) return $self.handleSelect($1);"
+            }
+        },
+        // make /gif and /tenor selections insert the url too, using Discord's own INSERT branch
+        {
+            find: '.startsWith("/gif")',
+            replacement: {
+                match: /(\i)===\i\.\i\.INSERT\?(\i)\.replaceText\((\i)\.meta\.url\):\2\.sendMessage\(\3\.meta\.url\)/,
+                replace: "$2.replaceText($3.meta.url)"
+            }
         }
-    }],
+    ],
 
     handleSelect(gif?: { url: string; }) {
         if (gif) {
