@@ -18,6 +18,7 @@
 
 import "./style.css";
 
+import { isPluginEnabled } from "@api/PluginManager";
 import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
 import { getIntlMessage } from "@utils/discord";
@@ -114,7 +115,7 @@ export const settings = definePluginSettings({
     },
     keepIcons: {
         type: OptionType.BOOLEAN,
-        description: "Keep showing guild icons in the primary guild bar folder when it's open in the BetterFolders sidebar",
+        description: "Keep showing guild icons in the primary guild bar folder when it's open in the BetterFolders sidebar (has no effect while PlainFolderIcon is enabled)",
         restartNeeded: true,
         default: false
     },
@@ -212,19 +213,20 @@ export default definePlugin({
 
                 // If we are rendering the normal GuildsBar sidebar, we make Discord think the folder is always collapsed to show better icons (the mini guild icons) and avoid transitions
                 {
-                    predicate: () => settings.store.keepIcons,
+                    // PlainFolderIcon hides the mini guild icons keepIcons is meant to show, treat it as off (#2469)
+                    predicate: () => settings.store.keepIcons && !isPluginEnabled("PlainFolderIcon"),
                     match: /let ?(?:\i,)*?{folderNode:\i,setNodeRef:\i,.+?expanded:(\i),.+?;(?=let)/,
                     replace: (m, isExpanded) => `${m}${isExpanded}=!!arguments[0]?.isBetterFolders&&${isExpanded};`
                 },
                 // Disable expanding and collapsing folders transition in the normal GuildsBar sidebar
                 {
-                    predicate: () => !settings.store.keepIcons,
+                    predicate: () => !settings.store.keepIcons || isPluginEnabled("PlainFolderIcon"),
                     match: /(?=,\{from:\{height)/,
                     replace: "&&$self.shouldShowTransition(arguments[0])"
                 },
                 // If we are rendering the normal GuildsBar sidebar, we avoid rendering guilds from folders that are expanded
                 {
-                    predicate: () => !settings.store.keepIcons,
+                    predicate: () => !settings.store.keepIcons || isPluginEnabled("PlainFolderIcon"),
                     match: /"--custom-folder-color".+?(?=\i\(\(\i,\i,\i\)=>{let{key:.{0,70}"ul")(?<=selected:\i,expanded:(\i),.+?)/,
                     replace: (m, isExpanded) => `${m}$self.shouldRenderContents(arguments[0],${isExpanded})?null:`
                 },
