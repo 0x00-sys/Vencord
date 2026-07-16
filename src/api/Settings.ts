@@ -48,6 +48,7 @@ export interface Settings {
     frameless: boolean;
     transparent: boolean;
     winCtrlQ: boolean;
+    winAltF4ToTray: boolean;
     macosVibrancyStyle:
     | "content"
     | "fullscreen-ui"
@@ -103,6 +104,7 @@ const DefaultSettings: Settings = {
     frameless: false,
     transparent: false,
     winCtrlQ: false,
+    winAltF4ToTray: false,
     macosVibrancyStyle: undefined,
     windowsMaterial: "none",
     disableMinSize: false,

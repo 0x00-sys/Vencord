@@ -46,19 +46,28 @@ if (!IS_VANILLA) {
     if (process.platform === "win32") {
         require("./patchWin32Updater");
 
-        if (settings.winCtrlQ) {
+        if (settings.winCtrlQ || settings.winAltF4ToTray) {
             const originalBuild = Menu.buildFromTemplate;
             Menu.buildFromTemplate = function (template) {
                 if (template[0]?.label === "&File") {
                     const { submenu } = template[0];
                     if (Array.isArray(submenu)) {
-                        submenu.push({
-                            label: "Quit (Hidden)",
-                            visible: false,
-                            acceleratorWorksWhenHidden: true,
-                            accelerator: "Control+Q",
-                            click: () => app.quit()
-                        });
+                        if (settings.winCtrlQ) {
+                            submenu.push({
+                                label: "Quit (Hidden)",
+                                visible: false,
+                                acceleratorWorksWhenHidden: true,
+                                accelerator: "Control+Q",
+                                click: () => app.quit()
+                            });
+                        }
+
+                        // without the accelerator Alt+F4 falls through to a native window close,
+                        // which Discord's close handler answers with its own minimize to tray setting
+                        if (settings.winAltF4ToTray) {
+                            const exitItem = submenu.find(item => item.accelerator === "Alt+F4");
+                            if (exitItem) delete exitItem.accelerator;
+                        }
                     }
                 }
                 return originalBuild.call(this, template);
