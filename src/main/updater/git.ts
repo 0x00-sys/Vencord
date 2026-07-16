@@ -22,6 +22,8 @@ import { ipcMain } from "electron";
 import { join } from "path";
 import { promisify } from "util";
 
+import gitHash from "~git-hash";
+
 import { serializeErrors } from "./common";
 
 const VENCORD_SRC_DIR = join(__dirname, "..");
@@ -54,7 +56,11 @@ async function calculateGitChanges() {
     const existsOnOrigin = (await git("ls-remote", "origin", branch)).stdout.length > 0;
     if (!existsOnOrigin) return [];
 
-    const res = await git("log", `HEAD...origin/${branch}`, "--pretty=format:%an/%h/%s");
+    // compare against the running build's commit, not the checkout's HEAD. The repo can
+    // already be pulled and rebuilt while the client still runs an old build
+    const base = await git("rev-parse", "--verify", gitHash).then(() => gitHash, () => "HEAD");
+
+    const res = await git("log", `${base}..origin/${branch}`, "--pretty=format:%an/%h/%s");
 
     const commits = res.stdout.trim();
     return commits ? commits.split("\n").map(line => {
@@ -68,7 +74,19 @@ async function calculateGitChanges() {
 
 async function pull() {
     const res = await git("pull");
-    return res.stdout.includes("Fast-forward");
+    if (res.stdout.includes("Fast-forward")) return true;
+
+    // the pull can be a no-op while the running build is still behind the checkout,
+    // report success in that case so the renderer rebuilds and offers a restart
+    try {
+        const [head, running] = await Promise.all([
+            git("rev-parse", "HEAD"),
+            git("rev-parse", gitHash)
+        ]);
+        return head.stdout.trim() !== running.stdout.trim();
+    } catch {
+        return false;
+    }
 }
 
 async function build() {
