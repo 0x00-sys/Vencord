@@ -38,10 +38,15 @@ function numberToBytes(number: number | bigint) {
  * This function is specifically written to mirror the native backend hashing function used by
  * `@discord/intl-loader-core`, to be able to hash names at runtime.
  */
+const hashCache = new Map<string, string>();
+
 export function runtimeHashMessageKey(key: string): string {
+    let hashed = hashCache.get(key);
+    if (hashed !== undefined) return hashed;
+
     const hash = h64(key, 0);
     const bytes = numberToBytes(hash);
-    return [
+    hashed = [
         BASE64_TABLE[bytes[0] >> 2],
         BASE64_TABLE[((bytes[0] & 0x03) << 4) | (bytes[1] >> 4)],
         BASE64_TABLE[((bytes[1] & 0x0f) << 2) | (bytes[2] >> 6)],
@@ -49,4 +54,7 @@ export function runtimeHashMessageKey(key: string): string {
         BASE64_TABLE[bytes[3] >> 2],
         BASE64_TABLE[((bytes[3] & 0x03) << 4) | (bytes[4] >> 4)],
     ].join("");
+
+    hashCache.set(key, hashed);
+    return hashed;
 }
