@@ -35,10 +35,13 @@ import { SpotifyStore, Track } from "./SpotifyStore";
 const cl = classNameFactory("vc-spotify-");
 
 function msToHuman(ms: number) {
-    const minutes = ms / 1000 / 60;
-    const m = Math.floor(minutes);
-    const s = Math.floor((minutes - m) * 60);
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor(totalSeconds % 3600 / 60);
+    const seconds = totalSeconds % 60;
+
+    const hh = hours > 0 ? `${hours.toString().padStart(2, "0")}:` : "";
+    return `${hh}${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function Svg(path: string, label: string) {
