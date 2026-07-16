@@ -154,10 +154,12 @@ function SearchBar({ instance, SearchBarComponent }: { instance: Instance; Searc
             ?.scrollTo(0, 0);
 
 
+        // gif urls are percent encoded, so encode the query the same way to make non ascii searches match
+        const encodedQuery = encodeURI(searchQuery).replace(/(%20|[_-])/g, " ").toLowerCase();
         const result =
             props.favCopy
                 .map(gif => ({
-                    score: fuzzySearch(searchQuery.toLowerCase(), getTargetString(gif.url ?? gif.src).replace(/(%20|[_-])/g, " ").toLowerCase()),
+                    score: fuzzySearch(encodedQuery, getTargetString(gif.url ?? gif.src).replace(/(%20|[_-])/g, " ").toLowerCase()),
                     gif,
                 }))
                 .filter(m => m.score != null) as { score: number; gif: Gif; }[];
