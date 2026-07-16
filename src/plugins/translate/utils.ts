@@ -26,6 +26,9 @@ import { resetLanguageDefaults, settings } from "./settings";
 
 export const cl = classNameFactory("vc-trans-");
 
+// channels with auto translation of received messages enabled, deliberately session scoped
+export const autoTranslateReceivedChannels = new Set<string>();
+
 const Native = VencordNative.pluginHelpers.Translate as PluginNative<typeof import("./native")>;
 
 interface GoogleData {

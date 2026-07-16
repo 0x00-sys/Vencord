@@ -20,10 +20,10 @@ import { Divider } from "@components/Divider";
 import { FormSwitch } from "@components/FormSwitch";
 import { Margins } from "@utils/margins";
 import { RenderModalProps } from "@vencord/discord-types";
-import { Forms, Modal,openModal, SearchableSelect, useMemo } from "@webpack/common";
+import { Forms, Modal, openModal, SearchableSelect, SelectedChannelStore, useMemo, useState } from "@webpack/common";
 
 import { settings } from "./settings";
-import { getLanguages } from "./utils";
+import { autoTranslateReceivedChannels, getLanguages } from "./utils";
 
 const LanguageSettingKeys = ["receivedInput", "receivedOutput", "sentInput", "sentOutput"] as const;
 
@@ -73,6 +73,25 @@ function AutoTranslateToggle() {
 }
 
 
+function AutoTranslateReceivedToggle() {
+    const channelId = SelectedChannelStore.getChannelId();
+    const [enabled, setEnabled] = useState(autoTranslateReceivedChannels.has(channelId));
+
+    return (
+        <FormSwitch
+            title="Auto Translate Received (this channel)"
+            description="Automatically translate new messages in the current channel until Discord is restarted. Their content is sent to the configured translation service"
+            value={enabled}
+            onChange={v => {
+                if (v) autoTranslateReceivedChannels.add(channelId);
+                else autoTranslateReceivedChannels.delete(channelId);
+                setEnabled(v);
+            }}
+            hideBorder
+        />
+    );
+}
+
 function TranslateModal({ rootProps }: { rootProps: RenderModalProps; }) {
     return (
         <Modal
@@ -90,6 +109,7 @@ function TranslateModal({ rootProps }: { rootProps: RenderModalProps; }) {
             <Divider className={Margins.bottom16} />
 
             <AutoTranslateToggle />
+            <AutoTranslateReceivedToggle />
         </Modal>
     );
 }

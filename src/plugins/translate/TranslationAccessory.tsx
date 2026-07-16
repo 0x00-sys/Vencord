@@ -24,8 +24,15 @@ import { cl, TranslationValue } from "./utils";
 
 const TranslationSetters = new Map<string, (v: TranslationValue) => void>();
 
+// keep translations around so they survive the accessory unmounting when scrolling
+const translations = new Map<string, TranslationValue>();
+
 export function handleTranslate(messageId: string, data: TranslationValue) {
-    TranslationSetters.get(messageId)!(data);
+    if (!translations.has(messageId) && translations.size >= 500) {
+        translations.delete(translations.keys().next().value!);
+    }
+    translations.set(messageId, data);
+    TranslationSetters.get(messageId)?.(data);
 }
 
 function Dismiss({ onDismiss }: { onDismiss: () => void; }) {
@@ -48,6 +55,9 @@ export function TranslationAccessory({ message }: { message: Message; }) {
 
         TranslationSetters.set(message.id, setTranslation);
 
+        const cached = translations.get(message.id);
+        if (cached) setTranslation(cached);
+
         return () => void TranslationSetters.delete(message.id);
     }, []);
 
@@ -58,7 +68,7 @@ export function TranslationAccessory({ message }: { message: Message; }) {
             <TranslateIcon width={16} height={16} className={cl("accessory-icon")} />
             {Parser.parse(translation.text)}
             <br />
-            (translated from {translation.sourceLanguage} - <Dismiss onDismiss={() => setTranslation(undefined)} />)
+            (translated from {translation.sourceLanguage} - <Dismiss onDismiss={() => { translations.delete(message.id); setTranslation(undefined); }} />)
         </span>
     );
 }
