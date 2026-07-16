@@ -22,12 +22,12 @@ import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/Co
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
 import { Message } from "@vencord/discord-types";
-import { ChannelStore, Menu } from "@webpack/common";
+import { ChannelStore, Menu, SelectedChannelStore, UserStore } from "@webpack/common";
 
 import { settings } from "./settings";
 import { setShouldShowTranslateEnabledTooltip, TranslateChatBarIcon, TranslateIcon } from "./TranslateIcon";
 import { handleTranslate, TranslationAccessory } from "./TranslationAccessory";
-import { translate } from "./utils";
+import { autoTranslateReceivedChannels, translate } from "./utils";
 
 const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { message: Message; }) => {
     const content = getMessageContent(message);
@@ -61,6 +61,41 @@ function getMessageContent(message: Message) {
 
 let tooltipTimeout: any;
 
+const nonTranslatableRegex = /https?:\/\/\S+|<a?:\w+:\d+>|<@!?\d+>|<@&\d+>|<#\d+>/g;
+
+const lastAutoTranslated = new Map<string, string>();
+let translateQueue: Promise<unknown> = Promise.resolve();
+let consecutiveFailures = 0;
+
+function maybeAutoTranslate(message: Message) {
+    if (!autoTranslateReceivedChannels.has(message.channel_id)) return;
+    if (message.channel_id !== SelectedChannelStore.getChannelId()) return;
+    if (message.author?.id === UserStore.getCurrentUser()?.id) return;
+
+    const content = getMessageContent(message);
+    // the content check also skips retranslation when an edit dispatch is just embeds resolving
+    if (!content || lastAutoTranslated.get(message.id) === content) return;
+    if (!/\p{L}/u.test(content.replace(nonTranslatableRegex, ""))) return;
+
+    if (!lastAutoTranslated.has(message.id) && lastAutoTranslated.size >= 500) {
+        lastAutoTranslated.delete(lastAutoTranslated.keys().next().value!);
+    }
+    lastAutoTranslated.set(message.id, content);
+
+    // translate serially with a small delay between requests to not hammer the service
+    translateQueue = translateQueue
+        .then(() => translate("received", content))
+        .then(trans => {
+            consecutiveFailures = 0;
+            handleTranslate(message.id, trans);
+        })
+        .catch(() => {
+            // translate already showed an error toast, just stop making it worse
+            if (++consecutiveFailures >= 3) autoTranslateReceivedChannels.delete(message.channel_id);
+        })
+        .then(() => new Promise(r => setTimeout(r, 300)));
+}
+
 export default definePlugin({
     name: "Translate",
     description: "Translate messages with Google Translate, DeepL or Kagi.",
@@ -72,6 +107,15 @@ export default definePlugin({
     },
     // not used, just here in case some other plugin wants it or w/e
     translate,
+
+    flux: {
+        MESSAGE_CREATE({ message, optimistic }: { message: Message; optimistic: boolean; }) {
+            if (!optimistic) maybeAutoTranslate(message);
+        },
+        MESSAGE_UPDATE({ message }: { message: Message; }) {
+            maybeAutoTranslate(message);
+        }
+    },
 
     renderMessageAccessory: props => <TranslationAccessory message={props.message} />,
 
