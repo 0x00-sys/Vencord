@@ -29,12 +29,10 @@ export default definePlugin({
             ]
         },
         {
-            // removeAttribute("srcObject") is a no-op since srcObject is a property, so every
-            // stream preview capture leaked a hidden video element that kept rendering the stream
             find: "ApplicationStreamPreviewUploadManager",
             replacement: {
-                match: /(\i)\.removeAttribute\("srcObject"\)/,
-                replace: "$1.pause(),$1.srcObject=null"
+                match: /removeAttribute\("srcObject"\)(?<=(\i)\..+?)/,
+                replace: "pause(),$1.srcObject=null"
             }
         }
     ]
