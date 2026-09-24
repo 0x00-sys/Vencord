@@ -31,7 +31,7 @@ export default definePlugin({
         {
             find: "handleSelectGIF=",
             replacement: {
-                match: /handleSelectGIF=(\i)=>\{/,
+                match: /handleSelectGIF=\((\i),\i\)=>\{/,
                 replace: "$&if (!this?.props?.className) return $self.handleSelect($1);"
             }
         },

@@ -37,9 +37,10 @@ export default definePlugin({
         {
             find: ".handleSendMessage,onResize:",
             replacement: {
-                // the leading optional group grabs Discord's text command handler (+:emoji:, s/find/replace, ...) so it can be re-run when a listener changes the content (#4313)
-                match: /(?:let \i=\(0,(\i\.\i)\)\(\i,\{channel:\i,isEdit:!1\}\).+?)?let (\i)=\i\.\i\.parse\((\i),.+?\.getSendMessageOptions\(\{.+?\}\)?;(?=.+?(\i)\.flags=)(?<=\)\(({.+?})\)\.then.+?)/,
-                replace: (m, applyTextCommands, parsedMessage, channel, options, props) => m +
+                // TODO: simplify once Discord decides on if this .then() callback should be async or not
+                // the optional group grabs Discord's text command handler (+:emoji:, s/find/replace, ...) so it can be re-run when a listener changes the content (#4313)
+                match: /(?<=channel:\i\}\)\.then\()(?:async )?(\i=>.+?(?:let \i=\(0,(\i\.\i)\)\(\i,\{channel:\i,isEdit:!1\}\).+?)?let (\i)=\i\.\i\.parse\((\i),.+?\.getSendMessageOptions\(\{.+?\}\)?;)(?=.+?(\i)\.flags=)(?<=\)\(({.+?})\)\.then.+?)/,
+                replace: (m, restCode, applyTextCommands, parsedMessage, channel, options, props) => "async " + restCode +
                     `const vcOriginalContent=${parsedMessage}.content;` +
                     `if(await Vencord.Api.MessageEvents._handlePreSend(${channel}.id,${parsedMessage},${options},${props}))` +
                     "return{shouldClear:false,shouldRefocus:true};" +
