@@ -26,6 +26,7 @@ import { finished } from "stream/promises";
 import { fileURLToPath } from "url";
 
 const BASE_URL = "https://github.com/Vencord/Installer/releases/latest/download/";
+const LATEST_RELEASE_URL = "https://api.github.com/repos/Vencord/Installer/releases/latest";
 
 const BASE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FILE_DIR = join(BASE_DIR, "dist", "Installer");
@@ -44,24 +45,51 @@ function getFilename() {
     }
 }
 
-async function ensureBinary() {
-    const filename = getFilename();
-    console.log("Downloading " + filename);
-
-    mkdirSync(FILE_DIR, { recursive: true });
-
-    const outputFile = join(FILE_DIR, filename);
-
-    const etag = existsSync(outputFile) && existsSync(ETAG_FILE)
+function fetchInstaller(filename) {
+    const etag = existsSync(join(FILE_DIR, filename)) && existsSync(ETAG_FILE)
         ? readFileSync(ETAG_FILE, "utf-8")
         : null;
 
-    const res = await fetch(BASE_URL + filename, {
+    return fetch(BASE_URL + filename, {
         headers: {
             "User-Agent": "Vencord (https://github.com/Vendicated/Vencord)",
             "If-None-Match": etag
         }
     });
+}
+
+async function findFilename() {
+    const platform = { win32: /\.exe$/i, darwin: /darwin|mac/i, linux: /linux/i }[process.platform];
+
+    try {
+        const res = await fetch(LATEST_RELEASE_URL, {
+            headers: { "User-Agent": "Vencord (https://github.com/Vendicated/Vencord)" }
+        });
+        const { assets } = await res.json();
+        return assets.find(a => /cli/i.test(a.name) && platform.test(a.name))?.name ?? null;
+    } catch {
+        return null;
+    }
+}
+
+async function ensureBinary() {
+    mkdirSync(FILE_DIR, { recursive: true });
+
+    let filename = getFilename();
+    let res = await fetchInstaller(filename);
+
+    // release file names have changed before, so look up the current one if ours is gone
+    if (res.status === 404) {
+        const found = await findFilename();
+        if (found && found !== filename) {
+            filename = found;
+            res = await fetchInstaller(filename);
+        }
+    }
+
+    console.log("Downloading " + filename);
+
+    const outputFile = join(FILE_DIR, filename);
 
     if (res.status === 304) {
         console.log("Up to date, not redownloading!");
